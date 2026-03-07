@@ -1,0 +1,288 @@
+# 🧬 Roadmap: Del MVP al Paper de la Icesi
+
+> **Meta:** Replicar y superar la arquitectura completa del paper de la Universidad Icesi sobre predicción QSAR de antidepresivos.
+> **Estado actual:** ~20% completado (tubería funcional de extremo a extremo).
+
+---
+
+## 📊 Progreso Visual
+
+```
+MVP actual        ████░░░░░░░░░░░░░░░░  20%
+Fase 1 (Datos)    ░░░░░░░░░░░░░░░░░░░░   →  40%
+Fase 2 (Features) ░░░░░░░░░░░░░░░░░░░░   →  55%
+Fase 3 (Dual)     ░░░░░░░░░░░░░░░░░░░░   →  70%
+Fase 4 (Optuna)   ░░░░░░░░░░░░░░░░░░░░   →  85%
+Fase 5 (ADMET)    ░░░░░░░░░░░░░░░░░░░░   → 100% 🎯
+```
+
+---
+
+## Fase 1 — Datos a Escala (Semana 1)
+
+> **Gap:** 100 moléculas → 2,034+ registros curados
+
+### 1.1 Escalar el scraper de ChEMBL
+| | Detalle |
+|---|---|
+| **Archivo** | [scraper_chembl](file:///e:/proyecto-ia/antidepresivos/scraper_chembl) |
+| **Qué cambiar** | Cambiar `limit=100` → paginación completa con `offset` para descargar **todos** los registros |
+| **Columnas nuevas** | Agregar `standard_type` (IC₅₀ vs EC₅₀), `standard_value`, `standard_units`, `assay_type` |
+| **Target** | CHEMBL228 (SERT — Transportador de Serotonina) |
+
+**Tasks:**
+- [ ] Implementar paginación automática con `offset` y `limit=500` por página
+- [ ] Extraer campos adicionales: `standard_type`, `standard_value`, `standard_units`, `assay_type`, `data_validity_comment`
+- [ ] Agregar logging de progreso (`Página 1/N descargada...`)
+- [ ] Guardar dataset crudo como `dataset_sert_crudo.csv`
+
+### 1.2 Limpieza y curación de datos
+| | Detalle |
+|---|---|
+| **Archivo nuevo** | `limpiar_datos.py` |
+| **Referencia paper** | Eliminaron duplicados, validaron SMILES, estandarizaron unidades |
+
+**Tasks:**
+- [ ] Validar cada SMILES con `Chem.MolFromSmiles()` — descartar los que devuelven `None`
+- [ ] Eliminar duplicados por `canonical_smiles` (quedarse con la mediana de pActivity si hay múltiples mediciones)
+- [ ] Estandarizar unidades: convertir todo a `nM` y luego a `pActivity = -log10(valor_nM * 1e-9)`
+- [ ] Filtrar registros con `data_validity_comment` que indique problemas
+- [ ] Separar datasets: `dataset_ic50_limpio.csv` (bioquímico) y `dataset_ec50_limpio.csv` (celular)
+- [ ] Generar reporte de curación: cuántos registros entraron vs. salieron, distribución de pActivity
+
+> [!IMPORTANT]
+> **Meta mínima:** ≥ 2,000 registros limpios de IC₅₀. El paper usó 2,034.
+
+---
+
+## Fase 2 — Feature Engineering Avanzado (Semana 2)
+
+> **Gap:** Solo ECFP4 de 2048 bits → 844 bits filtrados + 43 descriptores fisicoquímicos = 887 features
+
+### 2.1 Calcular descriptores moleculares con RDKit
+| | Detalle |
+|---|---|
+| **Archivo nuevo** | `calcular_features.py` |
+| **Referencia paper** | 43 descriptores numéricos combinados con fingerprints filtrados |
+
+**Descriptores a extraer (los 43 del paper):**
+
+| Categoría | Descriptores |
+|---|---|
+| **Fisicoquímicos** | MW, LogP, TPSA, MR (refractividad molar) |
+| **Topológicos** | NumHDonors, NumHAcceptors, NumRotatableBonds, RingCount, NumAromaticRings |
+| **Constitucionales** | HeavyAtomCount, FractionCSP3, NumHeteroatoms, NumAliphaticRings |
+| **Electrónicos** | Gasteiger charges parciales (max, min, mean), BertzCT |
+| **Lipofilicidad** | LogP, MolLogP, Crippen contributions |
+| **Complejidad** | BalabanJ, HallKierAlpha, Kappa1/2/3 |
+| **QED** | Quantitative Estimate of Drug-likeness |
+| **Fragmentos** | fr_NH, fr_halogen, fr_ether, fr_benzene, fr_amide |
+
+**Tasks:**
+- [ ] Crear función `calcular_43_descriptores(smiles)` → retorna diccionario con los 43 valores
+- [ ] Aplicar la función a todo el dataset limpio
+- [ ] Manejar errores: si un descriptor falla para una molécula, marcar como `NaN`
+
+### 2.2 Filtrar fingerprints por varianza
+| | Detalle |
+|---|---|
+| **Referencia paper** | De 2048 bits ECFP4, filtraron por varianza mínima → quedaron 844 bits informativos |
+
+**Tasks:**
+- [ ] Generar la matriz completa de ECFP4 (2048 bits) para todas las moléculas
+- [ ] Usar `VarianceThreshold` de sklearn para eliminar bits que son constantes o casi constantes
+- [ ] Documentar: cuántos bits sobrevivieron el filtro (el paper reportó 844)
+- [ ] Concatenar: `X_final = [844_bits_filtrados | 43_descriptores]` → matriz de ~887 columnas
+
+### 2.3 Actualizar el pipeline de entrenamiento
+| | Detalle |
+|---|---|
+| **Archivo** | [mvp_qsar.py](file:///e:/proyecto-ia/antidepresivos/mvp_qsar.py) → refactorizar como `entrenar_modelo.py` |
+
+**Tasks:**
+- [ ] Refactorizar [mvp_qsar.py](file:///e:/proyecto-ia/antidepresivos/mvp_qsar.py) → `entrenar_modelo.py` con funciones modulares
+- [ ] Cambiar input: en vez de solo fingerprints, usar la matriz de 887 features
+- [ ] Agregar `StandardScaler` para normalizar los 43 descriptores (los bits ya son 0/1)
+- [ ] Agregar métricas completas: R², RMSE, MAE, y gráfico de predicción vs. real
+- [ ] Guardar el modelo entrenado con `joblib.dump()`
+
+---
+
+## Fase 3 — Estrategia Dual-Endpoint (Semana 3)
+
+> **Gap:** 1 modelo genérico → 2 modelos independientes (IC₅₀ + EC₅₀)
+
+### 3.1 Modelo de eficacia bioquímica (IC₅₀)
+| | Detalle |
+|---|---|
+| **Archivo nuevo** | `modelo_ic50.py` |
+| **Dataset** | `dataset_ic50_limpio.csv` |
+| **Qué predice** | Potencia de inhibición del transportador SERT in vitro |
+
+**Tasks:**
+- [ ] Entrenar XGBRegressor con el dataset IC₅₀
+- [ ] Evaluar con R², RMSE, MAE en test set (80/20 split)
+- [ ] Graficar: predicción vs. real (scatter plot)
+- [ ] Guardar modelo como `modelo_ic50.pkl`
+
+### 3.2 Modelo de eficacia celular / toxicidad (EC₅₀)
+| | Detalle |
+|---|---|
+| **Archivo nuevo** | `modelo_ec50.py` |
+| **Dataset** | `dataset_ec50_limpio.csv` |
+| **Qué predice** | Respuesta celular / toxicidad funcional |
+
+**Tasks:**
+- [ ] Verificar que hay suficientes datos de EC₅₀ en ChEMBL para SERT
+- [ ] Si no hay suficientes, considerar targets adicionales (5-HT1A, 5-HT2A, NET)
+- [ ] Entrenar segundo XGBRegressor independiente
+- [ ] Evaluar con las mismas métricas del modelo IC₅₀
+- [ ] Guardar modelo como `modelo_ec50.pkl`
+
+### 3.3 Validar independencia estadística
+**Tasks:**
+- [ ] Calcular correlación de Pearson entre predicciones IC₅₀ y EC₅₀ para las mismas moléculas
+- [ ] Confirmar que **no** se correlacionan (como demostró el paper)
+- [ ] Documentar resultados en un notebook o reporte
+
+> [!WARNING]
+> El paper demostró que IC₅₀ y EC₅₀ **no se correlacionan**, por eso se necesitan dos modelos separados. Si entrenas uno solo, pierdes información crítica de toxicidad.
+
+---
+
+## Fase 4 — Optimización con Optuna (Semana 4)
+
+> **Gap:** Hiperparámetros por defecto → tuning bayesiano con 50 trials
+
+### 4.1 Instalar y configurar Optuna
+| | Detalle |
+|---|---|
+| **Archivo nuevo** | `optimizar_hiperparametros.py` |
+| **Dependencia** | `pip install optuna` |
+
+**Hiperparámetros a optimizar (del paper):**
+
+| Parámetro | Rango de búsqueda |
+|---|---|
+| `n_estimators` | 100 — 1000 |
+| `max_depth` | 3 — 10 |
+| `learning_rate` | 0.01 — 0.3 |
+| `subsample` | 0.6 — 1.0 |
+| `colsample_bytree` | 0.6 — 1.0 |
+| `min_child_weight` | 1 — 10 |
+| `gamma` | 0 — 5 |
+| `reg_alpha` | 0 — 10 |
+| `reg_lambda` | 0 — 10 |
+
+**Tasks:**
+- [ ] Instalar Optuna: `pip install optuna`
+- [ ] Crear función objetivo que use cross-validation (5-fold) en vez de un split simple
+- [ ] Configurar `study = optuna.create_study(direction="minimize")` minimizando RMSE
+- [ ] Correr 50 trials (el paper usó este número exacto)
+- [ ] Extraer mejores parámetros y re-entrenar el modelo final
+- [ ] Repetir para ambos modelos (IC₅₀ y EC₅₀)
+- [ ] Guardar los modelos optimizados como `modelo_ic50_optuna.pkl` y `modelo_ec50_optuna.pkl`
+
+### 4.2 Validación cruzada rigurosa
+**Tasks:**
+- [ ] Implementar 5-Fold Cross-Validation (no solo train/test split)
+- [ ] Reportar R² ± desviación estándar en cada fold
+- [ ] Comparar: modelo default vs. modelo optimizado
+
+> [!TIP]
+> Tu PC tiene 24 GB de RAM. Con `n_jobs=-1` en XGBoost y 50 trials de Optuna, esto debería correr en ~10-20 minutos dependiendo del tamaño del dataset.
+
+---
+
+## Fase 5 — Filtro ADMET Final (Semana 5)
+
+> **Gap:** La IA predice y ahí termina → Los candidatos pasan por filtros farmacológicos reales
+
+### 5.1 Calcular QED (Quantitative Estimate of Drug-likeness)
+| | Detalle |
+|---|---|
+| **Archivo nuevo** | `filtro_admet.py` |
+| **Umbral paper** | QED ≥ 0.5 |
+
+**Tasks:**
+- [ ] Calcular QED con `Descriptors.qed(mol)` de RDKit para cada candidato
+- [ ] Filtrar: solo pasan las moléculas con QED ≥ 0.5
+- [ ] Documentar cuántas moléculas pasaron vs. fueron descartadas
+
+### 5.2 Perfil ADMET in silico
+| Propiedad | Qué evalúa | Herramienta |
+|---|---|---|
+| **Absorción** | Biodisponibilidad oral | Lipinski + Veber (ya lo tienes en [app_qsar.py](file:///e:/proyecto-ia/antidepresivos/app_qsar.py)) |
+| **Distribución** | Penetración BBB | Clark score (ya lo tienes en [app_qsar.py](file:///e:/proyecto-ia/antidepresivos/app_qsar.py)) |
+| **Metabolismo** | Inhibición CYP450 | SwissADME API o pkCSM |
+| **Toxicidad** | Hepatotoxicidad, cardiotoxicidad (hERG) | pkCSM API o ADMETlab2 |
+| **Excreción** | Clearance renal | Descriptores calculados |
+
+**Tasks:**
+- [ ] Integrar API de SwissADME o pkCSM para predicción in silico de ADMET
+- [ ] Alternativa offline: usar `rdkit.Chem.FilterCatalog` con filtros PAINS (Pan Assay INterference)
+- [ ] Filtrar candidatos tóxicos: descartar los que fallen en hERG (cardiotoxicidad)
+- [ ] Generar tabla final de candidatos "ganadores" con todos sus scores
+
+### 5.3 Integrar todo en la app Streamlit
+| | Detalle |
+|---|---|
+| **Archivo** | [app_qsar.py](file:///e:/proyecto-ia/antidepresivos/app_qsar.py) |
+
+**Tasks:**
+- [ ] Agregar pestaña "Predicción QSAR" que cargue los modelos IC₅₀ y EC₅₀
+- [ ] Mostrar predicción dual: eficacia bioquímica + celular
+- [ ] Mostrar score QED y perfil ADMET completo
+- [ ] Agregar veredicto final: ✅ Candidato viable / ❌ Descartado (con razones)
+- [ ] Exportar resultados a PDF o CSV
+
+---
+
+## 🗂️ Estructura Final de Archivos
+
+```
+e:\proyecto-ia\antidepresivos\
+├── scraper_chembl.py             ← Fase 1: Scraper con paginación completa
+├── limpiar_datos.py              ← Fase 1: Curación y limpieza
+├── calcular_features.py          ← Fase 2: 43 descriptores + fingerprints filtrados
+├── entrenar_modelo.py            ← Fase 2: Pipeline refactorizado (reemplaza mvp_qsar.py)
+├── modelo_ic50.py                ← Fase 3: Entrenamiento endpoint IC₅₀
+├── modelo_ec50.py                ← Fase 3: Entrenamiento endpoint EC₅₀
+├── optimizar_hiperparametros.py  ← Fase 4: Optuna bayesian tuning
+├── filtro_admet.py               ← Fase 5: QED + ADMET + PAINS
+├── app_qsar.py                   ← UI Streamlit (se actualiza en cada fase)
+├── datasets/
+│   ├── dataset_sert_crudo.csv
+│   ├── dataset_ic50_limpio.csv
+│   ├── dataset_ec50_limpio.csv
+│   └── features_887.csv
+├── modelos/
+│   ├── modelo_ic50_optuna.pkl
+│   └── modelo_ec50_optuna.pkl
+└── reportes/
+    ├── reporte_curacion.md
+    └── reporte_optimizacion.md
+```
+
+---
+
+## 📋 Resumen de Dependencias
+
+```
+pip install rdkit pandas numpy scikit-learn xgboost optuna streamlit requests joblib matplotlib seaborn
+```
+
+---
+
+## ⏱️ Línea de Tiempo Estimada
+
+| Fase | Semana | Progreso Acumulado |
+|---|---|---|
+| **Fase 1** — Datos a escala | Semana 1 | 40% |
+| **Fase 2** — Feature engineering | Semana 2 | 55% |
+| **Fase 3** — Dual-endpoint | Semana 3 | 70% |
+| **Fase 4** — Optuna tuning | Semana 4 | 85% |
+| **Fase 5** — Filtro ADMET | Semana 5 | 100% 🎯 |
+
+> [!NOTE]
+> Cada fase se construye sobre la anterior. No saltar fases. Los scripts de cada fase se pueden ejecutar de forma independiente una vez completados.

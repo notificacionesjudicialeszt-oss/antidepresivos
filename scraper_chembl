@@ -1,0 +1,44 @@
+import requests
+import pandas as pd
+
+print("\n[!] Iniciando conexión con la API de ChEMBL...")
+print("[!] Buscando targets para el Transportador de Serotonina (SERT)...")
+
+# El ID exacto en ChEMBL para el Transportador de Serotonina
+target_id = "CHEMBL228"
+
+# URL de la API: pedimos 100 resultados que tengan un valor de eficacia registrado
+url = f"https://www.ebi.ac.uk/chembl/api/data/activity.json?target_chembl_id={target_id}&pchembl_value__isnull=false&limit=100"
+
+# Hacemos la petición (el "scraping")
+respuesta = requests.get(url)
+datos = respuesta.json()
+
+moleculas = []
+
+# Filtramos y estructuramos la data
+for actividad in datos.get('activities', []):
+    smiles = actividad.get('canonical_smiles')
+    pchembl = actividad.get('pchembl_value')
+    mol_id = actividad.get('molecule_chembl_id')
+    
+    # Solo guardamos si la molécula tiene el código SMILES y su nivel de eficacia
+    if smiles and pchembl:
+        moleculas.append({
+            'ChEMBL_ID': mol_id,
+            'SMILES': smiles,
+            'Eficacia (pActivity)': float(pchembl)
+        })
+
+# Convertimos todo a una matriz de datos usando Pandas
+df = pd.DataFrame(moleculas)
+
+# Guardamos el archivo CSV directamente en tu carpeta del disco E
+ruta_archivo = 'E:\\proyecto-ia\\antidepresivos\\dataset_serotonina.csv'
+df.to_csv(ruta_archivo, index=False)
+
+print(f"\n[+] ¡Scraping completado con éxito!")
+print(f"[+] Se descargaron y estructuraron {len(df)} moléculas.")
+print(f"[+] Archivo guardado en: {ruta_archivo}")
+print("\n=== VISTA PREVIA DEL DATASET ===")
+print(df.head())
