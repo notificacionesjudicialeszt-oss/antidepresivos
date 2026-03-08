@@ -2,7 +2,7 @@
 
 ---
 
-**Autor:** Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609
+**Autores:** Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609 & Paula Leandra Ortega Morales
 **Afiliación:** Colombia
 **Fecha:** Marzo 2026
 **Palabras clave:** QSAR, XGBoost, antidepresivos, SERT, NAT, DAT, ADMET, machine learning, drug discovery

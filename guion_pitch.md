@@ -147,4 +147,4 @@ Nosotros no reemplazamos el laboratorio. Le decimos al laboratorio **exactamente
 
 ---
 
-*© 2026 Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609 · Todos los derechos reservados*
+*© 2026 Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609 & Paula Leandra Ortega Morales · Todos los derechos reservados*

@@ -227,4 +227,4 @@ antidepresivos/
 ---
 
 *Documento interno — Pipeline QSAR Multi-Agente v2.0*
-*© 2026 Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609 · Todos los derechos reservados*
+*© 2026 Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609 & Paula Leandra Ortega Morales · Todos los derechos reservados*

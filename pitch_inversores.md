@@ -117,4 +117,4 @@ Expandimos a ansiedad, TDAH, Parkinson, Alzheimer — mismo motor, nuevos target
 ---
 
 *NeuroPharma AI — Descubrimiento de fármacos acelerado por Inteligencia Artificial*
-*© 2026 Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609 · Todos los derechos reservados*
+*© 2026 Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609 & Paula Leandra Ortega Morales · Todos los derechos reservados*
