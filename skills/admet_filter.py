@@ -56,21 +56,34 @@ def check_lipinski(smiles: str) -> dict:
     }
 
 
-def calculate_bbb_score(smiles: str) -> float:
+def calculate_bbb_score(smiles: str) -> dict:
     """
     Estima la probabilidad de penetración de la Barrera Hematoencefálica (BBB).
-    Basado en Clark 2003: BBB score = 0.152*LogP - 0.0148*TPSA + 0.139
+    Sistema de 5 criterios basado en Clark 2003.
 
     Returns:
-        BBB score. > 0 = probable penetración.
+        Dict con score (0-5), penetra (bool), y detalles por criterio.
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
-        return -99.0
+        return {"score": 0, "penetra": False, "criteria": {}}
 
+    mw = Descriptors.MolWt(mol)
     logp = Descriptors.MolLogP(mol)
     tpsa = Descriptors.TPSA(mol)
-    return 0.152 * logp - 0.0148 * tpsa + 0.139
+    hbd = Descriptors.NumHDonors(mol)
+    rot = Descriptors.NumRotatableBonds(mol)
+
+    criteria = {
+        "MW ≤ 400": mw <= 400,
+        "1 ≤ LogP ≤ 3": 1 <= logp <= 3,
+        "TPSA ≤ 90": tpsa <= 90,
+        "HBD ≤ 3": hbd <= 3,
+        "RotBonds ≤ 8": rot <= 8,
+    }
+
+    score = sum(criteria.values())
+    return {"score": score, "penetra": score >= 4, "criteria": criteria}
 
 
 def check_pains(smiles: str) -> dict:
@@ -109,7 +122,7 @@ def full_admet_filter(
     Filtros:
         1. QED ≥ qed_threshold
         2. Lipinski Rule of 5 (≤ 1 violación)
-        3. BBB score > 0 (penetración probable)
+        3. BBB score ≥ 4/5 (penetración probable)
         4. PAINS-free (sin alertas de interferencia)
 
     Args:
@@ -136,7 +149,7 @@ def full_admet_filter(
         passes_all = (
             qed >= qed_threshold
             and lipinski["passes"]
-            and bbb > 0
+            and bbb["penetra"]
             and pains["passes"]
         )
 
@@ -145,8 +158,8 @@ def full_admet_filter(
             "QED": round(qed, 3),
             "Lipinski_passes": lipinski["passes"],
             "Lipinski_violations": lipinski["violations"],
-            "BBB_score": round(bbb, 3),
-            "BBB_penetration": bbb > 0,
+            "BBB_score": bbb["score"],
+            "BBB_penetration": bbb["penetra"],
             "PAINS_free": pains["passes"],
             "PAINS_alerts": "; ".join(pains["alerts"]) if pains["alerts"] else "",
             "ADMET_verdict": "✅ Viable" if passes_all else "❌ Descartado",

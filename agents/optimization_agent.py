@@ -1,11 +1,7 @@
 """
 OptimizationAgent — Agente de Optimización con Optuna (Fase 4).
 
-Responsabilidades:
-    1. Optimizar hiperparámetros del modelo IC₅₀ con Optuna
-    2. Optimizar hiperparámetros del modelo EC₅₀ (si existe)
-    3. Re-entrenar con mejores parámetros
-    4. Comparar modelo default vs optimizado
+Soporta múltiples targets (SERT, NAT, DAT).
 """
 
 import logging
@@ -21,107 +17,80 @@ logger = logging.getLogger(__name__)
 
 
 class OptimizationAgent(BaseAgent):
-    """Agente que optimiza los hiperparámetros de los modelos con Optuna."""
+    """Agente que optimiza hiperparámetros con Optuna para un target."""
 
-    def __init__(self, cfg=None):
-        super().__init__(name="OptimizationAgent", config=cfg or config)
+    def __init__(self, target_key: str = None, cfg=None):
+        self.target_key = target_key or config.DEFAULT_TARGET
+        self.paths = config.get_target_paths(self.target_key)
+        super().__init__(
+            name=f"OptimizationAgent[{self.target_key}]",
+            config=cfg or config,
+        )
 
     def validate_inputs(self) -> None:
-        if not self.config.FEATURES_MATRIX.exists():
-            raise ValidationError("Matriz de features no encontrada.")
-        if not self.config.MODELO_IC50.exists():
-            raise ValidationError(
-                "Modelo IC₅₀ base no encontrado. Ejecuta primero el TrainingAgent."
-            )
+        if not self.paths["features_matrix"].exists():
+            raise ValidationError(f"Features de {self.target_key} no encontradas.")
+        if not self.paths["modelo_ic50"].exists():
+            raise ValidationError(f"Modelo base IC₅₀ de {self.target_key} no encontrado.")
 
     def execute(self) -> dict:
-        """Optimiza hiperparámetros y re-entrena."""
-
-        # Cargar datos
-        df = pd.read_csv(self.config.FEATURES_MATRIX)
+        df = pd.read_csv(self.paths["features_matrix"])
         feature_cols = [c for c in df.columns if c not in ("pActivity", "canonical_smiles")]
         X = df[feature_cols].values
         y = df["pActivity"].values
 
-        # ── Optimizar IC₅₀ ──
-        self.logger.info("═══ Optimizando IC₅₀ con Optuna ═══")
-        opt_result = optuna_tuner.optimize_hyperparameters(
-            X, y,
-            n_trials=self.config.OPTUNA_TRIALS,
-            cv_folds=self.config.CV_FOLDS,
-            random_state=self.config.RANDOM_STATE,
-            search_space=self.config.OPTUNA_SEARCH_SPACE,
+        self.logger.info(f"═══ Optimizando {self.target_key} con Optuna ═══")
+        opt = optuna_tuner.optimize_hyperparameters(
+            X, y, n_trials=self.config.OPTUNA_TRIALS,
+            cv_folds=self.config.CV_FOLDS, random_state=self.config.RANDOM_STATE,
         )
 
-        # Re-entrenar con mejores params
-        self.logger.info("═══ Re-entrenando IC₅₀ con parámetros óptimos ═══")
+        self.logger.info(f"═══ Re-entrenando {self.target_key} con params óptimos ═══")
         optimized = model_trainer.train_model(
-            X, y,
-            params=opt_result["best_params"],
-            test_size=self.config.TEST_SIZE,
-            random_state=self.config.RANDOM_STATE,
+            X, y, params=opt["best_params"],
+            test_size=self.config.TEST_SIZE, random_state=self.config.RANDOM_STATE,
             cv_folds=self.config.CV_FOLDS,
         )
-        model_trainer.save_model(optimized["model"], self.config.MODELO_IC50_OPTUNA)
+        model_trainer.save_model(optimized["model"], self.paths["modelo_ic50_optuna"])
 
-        # Cargar métricas del modelo base para comparar
-        base_result = model_trainer.train_model(
-            X, y,
-            params=self.config.XGBOOST_DEFAULTS,
-            test_size=self.config.TEST_SIZE,
-            random_state=self.config.RANDOM_STATE,
+        base = model_trainer.train_model(
+            X, y, params=self.config.XGBOOST_DEFAULTS,
+            test_size=self.config.TEST_SIZE, random_state=self.config.RANDOM_STATE,
             cv_folds=self.config.CV_FOLDS,
         )
 
         return {
-            "best_params": opt_result["best_params"],
-            "best_rmse": opt_result["best_rmse"],
-            "n_trials": opt_result["n_trials"],
+            "target": self.target_key,
+            "best_params": opt["best_params"],
+            "best_rmse": opt["best_rmse"],
+            "n_trials": opt["n_trials"],
             "optimized_metrics": optimized["metrics"],
-            "base_metrics": base_result["metrics"],
+            "base_metrics": base["metrics"],
         }
 
     def validate_outputs(self, data: dict) -> None:
-        if not self.config.MODELO_IC50_OPTUNA.exists():
-            raise ValidationError("Modelo optimizado no fue guardado")
-
-        opt_r2 = float(data["optimized_metrics"]["R²"])
-        base_r2 = float(data["base_metrics"]["R²"])
-
-        if opt_r2 < base_r2:
-            self.logger.warning(
-                f"⚠️  Modelo optimizado (R²={opt_r2:.4f}) no superó al base (R²={base_r2:.4f}). "
-                f"Esto puede ocurrir por overfitting en la optimización."
-            )
+        if not self.paths["modelo_ic50_optuna"].exists():
+            raise ValidationError(f"Modelo optimizado de {self.target_key} no guardado")
 
     def generate_report(self, data: dict) -> None:
         report_generator.generate_report(
-            title="⚡ Reporte de Optimización — Fase 4",
+            title=f"⚡ Optimización — {self.target_key}",
             agent_name=self.name,
             sections={
-                "Configuración": {
-                    "Trials Optuna": data["n_trials"],
-                    "Mejor RMSE (CV)": f"{data['best_rmse']:.4f}",
-                },
-                "Mejores Hiperparámetros": {
-                    k: f"{v}" for k, v in data["best_params"].items()
-                },
-                "Comparación: Default vs Optimizado": {
+                "Comparación": {
                     "Default R²": data["base_metrics"]["R²"],
                     "Optimizado R²": data["optimized_metrics"]["R²"],
                     "Default RMSE": data["base_metrics"]["RMSE"],
                     "Optimizado RMSE": data["optimized_metrics"]["RMSE"],
                 },
-                "Modelo Guardado": [
-                    f"`{self.config.MODELO_IC50_OPTUNA}`",
-                ],
+                "Mejores Hiperparámetros": {k: str(v) for k, v in data["best_params"].items()},
             },
-            output_path=self.config.REPORTES_DIR / "reporte_optimizacion.md",
+            output_path=self.paths["reporte_optimizacion"],
         )
 
 
 if __name__ == "__main__":
+    import sys
     logging.basicConfig(level=logging.INFO)
-    agent = OptimizationAgent()
-    result = agent.run()
-    print(result)
+    target = sys.argv[1] if len(sys.argv) > 1 else None
+    print(OptimizationAgent(target_key=target).run())

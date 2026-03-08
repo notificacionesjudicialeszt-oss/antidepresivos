@@ -1,11 +1,7 @@
 """
 DataAgent — Agente de Adquisición y Curación de Datos (Fase 1).
 
-Responsabilidades:
-    1. Descargar TODOS los registros de actividad biológica del SERT desde ChEMBL
-    2. Curar y limpiar los datos (validar SMILES, eliminar duplicados, etc.)
-    3. Separar en datasets IC₅₀ y EC₅₀
-    4. Generar reporte de curación
+Soporta múltiples targets (SERT, NAT, DAT).
 """
 
 import logging
@@ -20,58 +16,52 @@ logger = logging.getLogger(__name__)
 class DataAgent(BaseAgent):
     """Agente que descarga y cura datos de ChEMBL para un target dado."""
 
-    def __init__(self, cfg=None):
-        super().__init__(name="DataAgent", config=cfg or config)
+    def __init__(self, target_key: str = None, cfg=None):
+        self.target_key = target_key or config.DEFAULT_TARGET
+        self.target_info = config.TARGETS[self.target_key]
+        self.paths = config.get_target_paths(self.target_key)
+        super().__init__(
+            name=f"DataAgent[{self.target_key}]",
+            config=cfg or config,
+        )
 
     def validate_inputs(self) -> None:
-        """Verifica que la configuración tiene lo necesario."""
-        if not self.config.TARGET_ID:
-            raise ValidationError("TARGET_ID no está definido en config.py")
-        if not self.config.API_BASE_URL:
-            raise ValidationError("API_BASE_URL no está definido en config.py")
-        self.logger.info(f"🎯 Target: {self.config.TARGET_ID} ({self.config.TARGET_NAME})")
+        if self.target_key not in config.TARGETS:
+            raise ValidationError(f"Target '{self.target_key}' no existe. Usa: {list(config.TARGETS.keys())}")
+        self.logger.info(
+            f"🎯 Target: {self.target_info['chembl_id']} — "
+            f"{self.target_info['name']} ({self.target_info['neurotransmitter']})"
+        )
 
     def execute(self) -> dict:
-        """
-        1. Scrapea ChEMBL para el target configurado
-        2. Cura los datos para IC₅₀ y EC₅₀ por separado
-        3. Guarda los datasets limpios
-        """
+        chembl_id = self.target_info["chembl_id"]
 
-        # ── Skill 1: Scraping ──
-        self.logger.info("═══ Fase 1.1: Scraping de ChEMBL ═══")
+        # ── Scraping ──
+        self.logger.info(f"═══ Scraping {self.target_key} desde ChEMBL ═══")
         df_crudo = chembl_scraper.scrape_target(
-            target_id=self.config.TARGET_ID,
+            target_id=chembl_id,
             base_url=self.config.API_BASE_URL,
             limit=self.config.LIMIT_PER_PAGE,
         )
-
-        # Guardar dataset crudo
         self.config.DATASETS_DIR.mkdir(parents=True, exist_ok=True)
-        df_crudo.to_csv(self.config.DATASET_CRUDO, index=False)
-        self.logger.info(f"💾 Dataset crudo guardado: {self.config.DATASET_CRUDO}")
+        df_crudo.to_csv(self.paths["dataset_crudo"], index=False)
 
-        # ── Skill 2: Curación IC₅₀ ──
-        self.logger.info("═══ Fase 1.2: Curación de datos IC₅₀ ═══")
-        df_ic50 = smiles_validator.curate_dataset(
-            df_crudo,
-            standard_type_filter="IC50",
-        )
-        df_ic50.to_csv(self.config.DATASET_IC50, index=False)
+        # ── Curación IC₅₀ ──
+        self.logger.info(f"═══ Curación IC₅₀ para {self.target_key} ═══")
+        df_ic50 = smiles_validator.curate_dataset(df_crudo, standard_type_filter="IC50")
+        df_ic50.to_csv(self.paths["dataset_ic50"], index=False)
         ic50_stats = smiles_validator.generate_curation_stats(len(df_crudo), df_ic50)
-        self.logger.info(f"💾 Dataset IC₅₀: {len(df_ic50):,} registros → {self.config.DATASET_IC50}")
+        self.logger.info(f"💾 {self.target_key} IC₅₀: {len(df_ic50):,} registros")
 
-        # ── Skill 2: Curación EC₅₀ ──
-        self.logger.info("═══ Fase 1.3: Curación de datos EC₅₀ ═══")
-        df_ec50 = smiles_validator.curate_dataset(
-            df_crudo,
-            standard_type_filter="EC50",
-        )
-        df_ec50.to_csv(self.config.DATASET_EC50, index=False)
+        # ── Curación EC₅₀ ──
+        self.logger.info(f"═══ Curación EC₅₀ para {self.target_key} ═══")
+        df_ec50 = smiles_validator.curate_dataset(df_crudo, standard_type_filter="EC50")
+        df_ec50.to_csv(self.paths["dataset_ec50"], index=False)
         ec50_stats = smiles_validator.generate_curation_stats(len(df_crudo), df_ec50)
-        self.logger.info(f"💾 Dataset EC₅₀: {len(df_ec50):,} registros → {self.config.DATASET_EC50}")
+        self.logger.info(f"💾 {self.target_key} EC₅₀: {len(df_ec50):,} registros")
 
         return {
+            "target": self.target_key,
             "df_crudo_count": len(df_crudo),
             "df_ic50": df_ic50,
             "df_ec50": df_ec50,
@@ -80,53 +70,35 @@ class DataAgent(BaseAgent):
         }
 
     def validate_outputs(self, data: dict) -> None:
-        """Verifica que los datasets cumplen los criterios mínimos."""
         ic50_count = len(data["df_ic50"])
-
         if ic50_count == 0:
-            raise ValidationError("❌ El dataset IC₅₀ está vacío después de la curación")
-
+            raise ValidationError(f"❌ {self.target_key} IC₅₀ vacío después de curación")
         if ic50_count < self.config.MIN_DATASET_SIZE:
             self.logger.warning(
-                f"⚠️  IC₅₀ tiene {ic50_count:,} registros, "
-                f"por debajo del mínimo deseado ({self.config.MIN_DATASET_SIZE:,}). "
-                f"Se continuará pero los resultados pueden ser limitados."
+                f"⚠️  {self.target_key} IC₅₀: {ic50_count:,} registros "
+                f"(mínimo deseado: {self.config.MIN_DATASET_SIZE:,})"
             )
         else:
-            self.logger.info(
-                f"✅ IC₅₀: {ic50_count:,} registros (meta: {self.config.MIN_DATASET_SIZE:,}) ¡Cumplido!"
-            )
-
-        ec50_count = len(data["df_ec50"])
-        if ec50_count < 50:
-            self.logger.warning(
-                f"⚠️  EC₅₀ tiene solo {ec50_count} registros. "
-                f"Puede no ser suficiente para un modelo independiente."
-            )
+            self.logger.info(f"✅ {self.target_key} IC₅₀: {ic50_count:,} registros")
 
     def generate_report(self, data: dict) -> None:
-        """Genera reporte de curación."""
         report_generator.generate_report(
-            title="📊 Reporte de Curación de Datos — Fase 1",
+            title=f"📊 Curación de Datos — {self.target_key}",
             agent_name=self.name,
             sections={
-                "Target": f"**{self.config.TARGET_NAME}** ({self.config.TARGET_ID})",
-                "Dataset Crudo": f"{data['df_crudo_count']:,} registros descargados de ChEMBL",
+                "Target": f"**{self.target_info['name']}** ({self.target_info['chembl_id']})",
+                "Neurotransmisor": self.target_info["neurotransmitter"],
+                "Dataset Crudo": f"{data['df_crudo_count']:,} registros",
                 "Curación IC₅₀": data["ic50_stats"],
                 "Curación EC₅₀": data["ec50_stats"],
-                "Archivos Generados": [
-                    f"`{self.config.DATASET_CRUDO}`",
-                    f"`{self.config.DATASET_IC50}`",
-                    f"`{self.config.DATASET_EC50}`",
-                ],
             },
-            output_path=self.config.REPORTES_DIR / "reporte_curacion.md",
+            output_path=self.paths["reporte_curacion"],
         )
 
 
-# ── Para ejecutar solo este agente ──
 if __name__ == "__main__":
+    import sys
     logging.basicConfig(level=logging.INFO)
-    agent = DataAgent()
-    result = agent.run()
-    print(result)
+    target = sys.argv[1] if len(sys.argv) > 1 else None
+    agent = DataAgent(target_key=target)
+    print(agent.run())

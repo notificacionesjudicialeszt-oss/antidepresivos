@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroPharma AI — Descubrimiento de Fármacos Acelerado por IA</title>
+    <meta name="description"
+        content="Motor de IA que identifica candidatos a antidepresivos en 40 minutos. Evaluamos SERT, NAT y DAT simultáneamente.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0d1117;
+            --bg-card: rgba(22, 33, 62, 0.6);
+            --bg-card-hover: rgba(22, 33, 62, 0.9);
+            --purple-start: #667eea;
+            --purple-end: #764ba2;
+            --cyan: #00d2ff;
+            --green: #2ecc71;
+            --orange: #f39c12;
+            --red-muted: #e74c3c;
+            --text-primary: #e6e6e6;
+            --text-secondary: #8892b0;
+            --text-muted: #555;
+            --glow-purple: rgba(102, 126, 234, 0.3);
+            --border-subtle: rgba(255, 255, 255, 0.06);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ═══ NAVBAR ═══ */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 4rem;
+            background: rgba(13, 17, 23, 0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .nav-logo {
+            font-size: 1.4rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--purple-start), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--purple-start);
+        }
+
+        .nav-cta {
+            padding: 0.5rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            background: linear-gradient(135deg, var(--purple-start), var(--purple-end));
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .nav-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px var(--glow-purple);
+        }
+
+        /* ═══ SECTIONS COMUNES ═══ */
+        section {
+            padding: 6rem 4rem;
+            position: relative;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.4rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--purple-start), var(--purple-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            margin-bottom: 3rem;
+        }
+
+        .divider {
+            border: none;
+            height: 1px;
+            margin: 0;
+            background: linear-gradient(90deg, transparent, var(--purple-start), transparent);
+        }
+
+        /* ═══ GLASSMORPHISM CARD ═══ */
+        .glass-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(102, 126, 234, 0.15);
+            border-radius: 16px;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--purple-start), var(--purple-end));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(102, 126, 234, 0.4);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.12);
+        }
+
+        .glass-card:hover::before {
+            opacity: 1;
+        }
+
+        /* ═══ HERO ═══ */
+        #hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding-top: 6rem;
+            position: relative;
+        }
+
+        #hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 30%, rgba(118, 75, 162, 0.06) 0%, transparent 50%),
+                radial-gradient(circle at 50% 80%, rgba(0, 210, 255, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            padding: 0.4rem 1.2rem;
+            border-radius: 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            color: var(--purple-start);
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero-title {
+            font-size: 3.8rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 1.2rem;
+            max-width: 800px;
+            background: linear-gradient(135deg, #fff 0%, #ccc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-subtitle {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin-bottom: 2.5rem;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 4rem;
+        }
+
+        .btn-primary {
+            padding: 1rem 2.5rem;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 1.05rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--purple-start), var(--purple-end));
+            color: white;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px var(--glow-purple);
+        }
+
+        .btn-secondary {
+            padding: 1rem 2.5rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 1.05rem;
+            font-weight: 600;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--purple-start);
+            color: var(--purple-start);
+        }
+
+        /* ═══ STAT CARDS ═══ */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            max-width: 900px;
+            width: 100%;
+            z-index: 1;
+        }
+
+        .stat-card {
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--purple-start), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-card .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 0.3rem;
+        }
+
+        /* ═══ PIPELINE ═══ */
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1.5rem;
+            max-width: 1200px;
+            margin: 0 auto 4rem;
+            position: relative;
+        }
+
+        .pipeline-grid::before {
+            content: '';
+            position: absolute;
+            top: 3rem;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--purple-start), var(--purple-end), var(--cyan));
+            z-index: 0;
+            opacity: 0.4;
+        }
+
+        .pipeline-step {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--purple-start), var(--purple-end));
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 0 30px var(--glow-purple);
+        }
+
+        .step-title {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .step-desc {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+
+        /* ═══ COMPARISON ═══ */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .comp-header {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .comp-item {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.8rem 0;
+            font-size: 0.95rem;
+        }
+
+        .comp-icon-bad {
+            color: var(--red-muted);
+            font-size: 1.2rem;
+        }
+
+        .comp-icon-good {
+            color: var(--green);
+            font-size: 1.2rem;
+        }
+
+        .comp-text-bad {
+            color: #777;
+        }
+
+        .comp-text-good {
+            color: var(--cyan);
+            font-weight: 500;
+        }
+
+        /* ═══ MARKET ═══ */
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            max-width: 1000px;
+            margin: 0 auto 4rem;
+        }
+
+        .market-card {
+            text-align: center;
+        }
+
+        .market-value {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--purple-start), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .market-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 0.3rem;
+        }
+
+        .market-badge {
+            display: inline-block;
+            padding: 0.2rem 0.8rem;
+            border-radius: 12px;
+            margin-top: 0.5rem;
+            background: rgba(46, 204, 113, 0.12);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            color: var(--green);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* ═══ BUSINESS MODEL TIMELINE ═══ */
+        .biz-timeline {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            max-width: 1000px;
+            margin: 0 auto 4rem;
+            position: relative;
+        }
+
+        .biz-timeline::before {
+            content: '';
+            position: absolute;
+            top: 2.5rem;
+            left: 15%;
+            right: 15%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--purple-start), var(--purple-end));
+            opacity: 0.4;
+        }
+
+        .biz-phase {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .phase-year {
+            display: inline-block;
+            padding: 0.3rem 1rem;
+            border-radius: 20px;
+            background: linear-gradient(135deg, var(--purple-start), var(--purple-end));
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .phase-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .phase-detail {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .phase-price {
+            color: var(--cyan);
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        /* ═══ TARGETS ═══ */
+        .targets-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .target-card-sert {
+            border-left: 3px solid #3b82f6;
+        }
+
+        .target-card-nat {
+            border-left: 3px solid var(--orange);
+        }
+
+        .target-card-dat {
+            border-left: 3px solid var(--green);
+        }
+
+        .target-emoji {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .target-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .target-neuro {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .target-drugs {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        /* ═══ CTA ═══ */
+        #contacto {
+            background: linear-gradient(180deg, var(--bg-primary), #0a0e14);
+        }
+
+        .cta-grid {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 4rem;
+            max-width: 1000px;
+            margin: 0 auto;
+            align-items: start;
+        }
+
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(22, 33, 62, 0.5);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--purple-start);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-group select {
+            cursor: pointer;
+        }
+
+        .form-group select option {
+            background: #16213e;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 1.1rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--purple-start), var(--purple-end));
+            color: white;
+            transition: all 0.3s;
+            margin-top: 0.5rem;
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px var(--glow-purple);
+        }
+
+        .trust-badges {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.2rem 1.5rem;
+            border-radius: 12px;
+            background: rgba(22, 33, 62, 0.4);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .trust-icon {
+            font-size: 1.8rem;
+        }
+
+        .trust-text {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .trust-sub {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        /* ═══ FOOTER ═══ */
+        footer {
+            padding: 3rem 4rem 1.5rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 2rem;
+            max-width: 1000px;
+            margin: 0 auto 2rem;
+        }
+
+        .footer-logo {
+            font-size: 1.2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--purple-start), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .footer-desc {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            line-height: 1.6;
+        }
+
+        .footer-col h4 {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 1rem;
+        }
+
+        .footer-col a {
+            display: block;
+            color: #555;
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin-bottom: 0.6rem;
+            transition: color 0.3s;
+        }
+
+        .footer-col a:hover {
+            color: var(--purple-start);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            color: #333;
+            font-size: 0.78rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        /* ═══ ANIMATIONS ═══ */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate {
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        .delay-1 {
+            animation-delay: 0.1s;
+        }
+
+        .delay-2 {
+            animation-delay: 0.2s;
+        }
+
+        .delay-3 {
+            animation-delay: 0.3s;
+        }
+
+        .delay-4 {
+            animation-delay: 0.4s;
+        }
+
+        .delay-5 {
+            animation-delay: 0.5s;
+        }
+
+        /* ═══ RESPONSIVE ═══ */
+        @media (max-width: 768px) {
+            nav {
+                padding: 1rem 1.5rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            section {
+                padding: 4rem 1.5rem;
+            }
+
+            .hero-title {
+                font-size: 2.2rem;
+            }
+
+            .stats-row,
+            .pipeline-grid,
+            .comparison-grid,
+            .market-grid,
+            .biz-timeline,
+            .targets-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .pipeline-grid::before,
+            .biz-timeline::before {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ═══ NAVBAR ═══ -->
+    <nav>
+        <div class="nav-logo">🧬 NeuroPharma AI</div>
+        <ul class="nav-links">
+            <li><a href="#solucion">Solución</a></li>
+            <li><a href="#tecnologia">Tecnología</a></li>
+            <li><a href="#mercado">Mercado</a></li>
+            <li><a href="#targets">Targets</a></li>
+            <li><a href="#contacto">Contacto</a></li>
+        </ul>
+        <a href="#contacto" class="nav-cta">Agendar Demo</a>
+    </nav>
+
+    <!-- ═══ HERO ═══ -->
+    <section id="hero">
+        <div class="hero-badge">🔬 IA para Drug Discovery</div>
+        <h1 class="hero-title animate">Descubrimiento de Fármacos Acelerado por IA</h1>
+        <p class="hero-subtitle animate delay-1">Encontramos candidatos a antidepresivos en <strong>40 minutos</strong>,
+            no en 12 años. Evaluamos 3 targets neuroquímicos simultáneamente.</p>
+        <div class="hero-buttons animate delay-2">
+            <a href="#contacto" class="btn-primary">🚀 Agendar Demo</a>
+            <a href="#solucion" class="btn-secondary">Ver Pitch Deck ↓</a>
+        </div>
+        <div class="stats-row animate delay-3">
+            <div class="glass-card stat-card">
+                <div class="stat-value">280M+</div>
+                <div class="stat-label">Pacientes con depresión en el mundo</div>
+            </div>
+            <div class="glass-card stat-card">
+                <div class="stat-value">$2.6B</div>
+                <div class="stat-label">Costo promedio por fármaco aprobado</div>
+            </div>
+            <div class="glass-card stat-card">
+                <div class="stat-value">40 min</div>
+                <div class="stat-label">Nuestro pipeline completo</div>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ═══ SOLUCIÓN ═══ -->
+    <section id="solucion">
+        <h2 class="section-title">El Problema</h2>
+        <p class="section-subtitle">El 30% de los pacientes no responde al primer antidepresivo. Desarrollar uno nuevo
+            cuesta $2.6B y toma 12 años.</p>
+        <div class="comparison-grid">
+            <div class="glass-card">
+                <div class="comp-header" style="color: var(--red-muted);">❌ Método Tradicional</div>
+                <div class="comp-item"><span class="comp-icon-bad">✗</span><span class="comp-text-bad">Un target a la
+                        vez</span></div>
+                <div class="comp-item"><span class="comp-icon-bad">✗</span><span class="comp-text-bad">Screening manual
+                        en laboratorio</span></div>
+                <div class="comp-item"><span class="comp-icon-bad">✗</span><span class="comp-text-bad">Semanas o meses
+                        de análisis</span></div>
+                <div class="comp-item"><span class="comp-icon-bad">✗</span><span class="comp-text-bad">Sin trazabilidad
+                        ni reportes</span></div>
+            </div>
+            <div class="glass-card">
+                <div class="comp-header" style="color: var(--cyan);">✅ NeuroPharma AI</div>
+                <div class="comp-item"><span class="comp-icon-good">✓</span><span class="comp-text-good">3 targets
+                        simultáneos</span></div>
+                <div class="comp-item"><span class="comp-icon-good">✓</span><span class="comp-text-good">887 features
+                        automatizados</span></div>
+                <div class="comp-item"><span class="comp-icon-good">✓</span><span class="comp-text-good">40 minutos
+                        end-to-end</span></div>
+                <div class="comp-item"><span class="comp-icon-good">✓</span><span class="comp-text-good">Reportes
+                        automáticos por fase</span></div>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ═══ TECNOLOGÍA ═══ -->
+    <section id="tecnologia">
+        <h2 class="section-title">¿Cómo Funciona?</h2>
+        <p class="section-subtitle">5 fases automatizadas, 0 intervención manual</p>
+        <div class="pipeline-grid">
+            <div class="pipeline-step">
+                <div class="step-badge">📥</div>
+                <div class="step-title">Datos</div>
+                <div class="step-desc">4,000+ moléculas descargadas de ChEMBL y curadas automáticamente</div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-badge">🧬</div>
+                <div class="step-title">Features</div>
+                <div class="step-desc">887 características moleculares extraídas por compuesto</div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-badge">🧠</div>
+                <div class="step-title">IA</div>
+                <div class="step-desc">Modelos XGBoost predictivos entrenados con validación cruzada</div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-badge">⚡</div>
+                <div class="step-title">Optimización</div>
+                <div class="step-desc">50 trials bayesianos con Optuna para máxima precisión</div>
+            </div>
+            <div class="pipeline-step">
+                <div class="step-badge">💊</div>
+                <div class="step-title">Filtros</div>
+                <div class="step-desc">QED + Lipinski + BBB + PAINS — solo candidatos viables</div>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ═══ MERCADO ═══ -->
+    <section id="mercado">
+        <h2 class="section-title">El Mercado</h2>
+        <p class="section-subtitle">Una oportunidad de miles de millones con costo operativo cercano a cero</p>
+        <div class="market-grid">
+            <div class="glass-card market-card">
+                <div class="market-value">$18.3B</div>
+                <div class="market-label">Mercado de Antidepresivos (2025)</div>
+                <div class="market-badge">CAGR 3.2%</div>
+            </div>
+            <div class="glass-card market-card">
+                <div class="market-value">$11.2B</div>
+                <div class="market-label">IA para Drug Discovery (2028)</div>
+                <div class="market-badge">CAGR 30%+</div>
+            </div>
+            <div class="glass-card market-card">
+                <div class="market-value">~$0</div>
+                <div class="market-label">Nuestro Costo Operativo</div>
+                <div class="market-badge">Datos públicos + Open Source</div>
+            </div>
+        </div>
+
+        <h3
+            style="text-align:center; font-size:1.6rem; font-weight:700; margin-bottom:0.5rem; color: var(--text-primary);">
+            Modelo de Negocio</h3>
+        <p class="section-subtitle">Tres fases de crecimiento — ingresos inmediatos + activos de alto valor</p>
+        <div class="biz-timeline">
+            <div class="glass-card biz-phase">
+                <div class="phase-year">AÑO 1</div>
+                <div class="phase-name">☁️ SaaS para Pharma</div>
+                <div class="phase-detail">Plataforma de screening virtual como servicio</div>
+                <div class="phase-price">$50K–500K / año por target</div>
+            </div>
+            <div class="glass-card biz-phase">
+                <div class="phase-year">AÑO 2–3</div>
+                <div class="phase-name">🧪 Pipeline Propio</div>
+                <div class="phase-detail">Licenciamiento de moléculas descubiertas</div>
+                <div class="phase-price">Royalties 2–5% sobre ventas</div>
+            </div>
+            <div class="glass-card biz-phase">
+                <div class="phase-year">AÑO 3+</div>
+                <div class="phase-name">🌐 Multi-Indicación</div>
+                <div class="phase-detail">Ansiedad, TDAH, Parkinson, Alzheimer</div>
+                <div class="phase-price">Mismo motor, nuevos targets</div>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ═══ TARGETS ═══ -->
+    <section id="targets">
+        <h2 class="section-title">Los 3 Targets</h2>
+        <p class="section-subtitle">Evaluamos simultáneamente los tres transportadores de monoaminas de la depresión</p>
+        <div class="targets-grid">
+            <div class="glass-card target-card-sert">
+                <div class="target-emoji">🔵</div>
+                <div class="target-name">SERT — Serotonina</div>
+                <div class="target-neuro">Regulación del estado de ánimo, ansiedad y sueño</div>
+                <div class="target-drugs">Prozac (Fluoxetina) · Zoloft (Sertralina) · Lexapro</div>
+            </div>
+            <div class="glass-card target-card-nat">
+                <div class="target-emoji">🟠</div>
+                <div class="target-name">NAT — Norepinefrina</div>
+                <div class="target-neuro">Respuesta al estrés, atención y energía</div>
+                <div class="target-drugs">Cymbalta (Duloxetina) · Effexor (Venlafaxina)</div>
+            </div>
+            <div class="glass-card target-card-dat">
+                <div class="target-emoji">🟢</div>
+                <div class="target-name">DAT — Dopamina</div>
+                <div class="target-neuro">Sistema de recompensa, motivación y control motor</div>
+                <div class="target-drugs">Wellbutrin (Bupropión) · Ritalin (Metilfenidato)</div>
+            </div>
+        </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ═══ CTA / CONTACTO ═══ -->
+    <section id="contacto">
+        <h2 class="section-title">¿Listo para Revolucionar el Drug Discovery?</h2>
+        <p class="section-subtitle">Agenda una demo personalizada y descubre cómo NeuroPharma AI puede acelerar tu
+            pipeline</p>
+        <div class="cta-grid">
+            <div class="glass-card">
+                <form onsubmit="event.preventDefault(); alert('¡Gracias! Te contactaremos pronto.');">
+                    <div class="form-group">
+                        <label>Nombre completo</label>
+                        <input type="text" placeholder="Tu nombre" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Correo electrónico corporativo</label>
+                        <input type="email" placeholder="correo@empresa.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Empresa / Organización</label>
+                        <input type="text" placeholder="Nombre de tu empresa">
+                    </div>
+                    <div class="form-group">
+                        <label>¿Cuál es tu rol?</label>
+                        <select>
+                            <option value="">Selecciona...</option>
+                            <option>Investigador</option>
+                            <option>Inversor</option>
+                            <option>Pharma / Biotech</option>
+                            <option>Académico</option>
+                            <option>Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>¿Qué target te interesa explorar?</label>
+                        <textarea placeholder="Cuéntanos sobre tu interés en SERT, NAT, DAT u otros..."></textarea>
+                    </div>
+                    <button type="submit" class="btn-submit">🚀 Solicitar Demo Gratuita</button>
+                </form>
+            </div>
+            <div>
+                <div class="trust-badges">
+                    <div class="trust-badge">
+                        <span class="trust-icon">🔒</span>
+                        <div>
+                            <div class="trust-text">Demo privada 1-a-1</div>
+                            <div class="trust-sub">Información 100% confidencial</div>
+                        </div>
+                    </div>
+                    <div class="trust-badge">
+                        <span class="trust-icon">⏱️</span>
+                        <div>
+                            <div class="trust-text">30 minutos</div>
+                            <div class="trust-sub">Pipeline completo en vivo</div>
+                        </div>
+                    </div>
+                    <div class="trust-badge">
+                        <span class="trust-icon">🆓</span>
+                        <div>
+                            <div class="trust-text">Sin compromiso</div>
+                            <div class="trust-sub">No se requiere tarjeta de crédito</div>
+                        </div>
+                    </div>
+                    <div class="trust-badge">
+                        <span class="trust-icon">🧬</span>
+                        <div>
+                            <div class="trust-text">Tecnología validada</div>
+                            <div class="trust-sub">Bugs del modelo BBB descubiertos y corregidos</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ FOOTER ═══ -->
+    <footer>
+        <div class="footer-grid">
+            <div>
+                <div class="footer-logo">🧬 NeuroPharma AI</div>
+                <p class="footer-desc">Descubrimiento de fármacos acelerado por Inteligencia Artificial. Evaluamos SERT,
+                    NAT y DAT para encontrar los antidepresivos del futuro.</p>
+            </div>
+            <div class="footer-col">
+                <h4>Producto</h4>
+                <a href="#tecnologia">Plataforma</a>
+                <a href="#solucion">Documentación</a>
+                <a href="#">API</a>
+            </div>
+            <div class="footer-col">
+                <h4>Empresa</h4>
+                <a href="#">Nosotros</a>
+                <a href="#">Blog</a>
+                <a href="#">Careers</a>
+            </div>
+            <div class="footer-col">
+                <h4>Legal</h4>
+                <a href="#">Privacidad</a>
+                <a href="#">Términos</a>
+                <a href="#">Licencia</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            © 2026 NeuroPharma AI — Descubrimiento de fármacos acelerado por IA · Colombia 🇨🇴<br>
+            Todos los derechos reservados · Álvaro Vladimir Ocampo Pulido · C.C. 1.107.078.609
+        </div>
+    </footer>
+
+    <!-- ═══ SCROLL ANIMATION ═══ -->
+    <script>
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.glass-card, .pipeline-step, .biz-phase').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(el);
+        });
+
+        // Smooth scroll for nav links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+    </script>
+
+</body>
+
+</html>

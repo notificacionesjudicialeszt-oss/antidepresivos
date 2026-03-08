@@ -81,9 +81,18 @@ def curate_dataset(
     df = df.dropna(subset=["validated_smiles"]).copy()
     logger.info(f"  ❌ SMILES inválidos descartados: {invalid_count}")
 
-    # 6. Eliminar outliers de pActivity (rango biológicamente razonable)
-    df = df[(df["pActivity"] >= 3.0) & (df["pActivity"] <= 12.0)].copy()
-    logger.info(f"  📐 Post-filtro outliers (pActivity 3-12): {len(df):,} registros")
+    # 6. Eliminar outliers de pActivity (IQR adaptativo por target)
+    Q1 = df["pActivity"].quantile(0.25)
+    Q3 = df["pActivity"].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = max(Q1 - 1.5 * IQR, 3.0)   # Mínimo biológico: 3.0
+    upper_bound = min(Q3 + 1.5 * IQR, 12.0)  # Máximo biológico: 12.0
+    pre_outlier = len(df)
+    df = df[(df["pActivity"] >= lower_bound) & (df["pActivity"] <= upper_bound)].copy()
+    logger.info(
+        f"  📐 Outliers (IQR): rango [{lower_bound:.1f}, {upper_bound:.1f}], "
+        f"eliminados {pre_outlier - len(df)}, quedan {len(df):,}"
+    )
 
     # 7. Deduplicar por SMILES canónico — quedarse con la mediana
     df_dedup = (

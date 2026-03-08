@@ -1,0 +1,129 @@
+# 🔍 Análisis de Puntos de Falla — Pipeline QSAR
+
+## El Falso Negativo del BBB (LSD)
+
+### ¿Qué pasó?
+
+La fórmula que usábamos era la **regresión lineal de Clark 2003**:
+
+```
+BBB_score = 0.152 × LogP − 0.0148 × TPSA + 0.139
+```
+
+Para **LSD** (C₂₀H₂₅N₃O):
+- LogP ≈ 2.95
+- TPSA ≈ 49.3 Å²
+
+```
+BBB = 0.152 × 2.95 − 0.0148 × 49.3 + 0.139
+BBB = 0.449 − 0.730 + 0.139
+BBB = −0.142
+```
+
+Resultado: **−0.14 → "No penetra"** ← FALSO
+
+### ¿Por qué falla?
+
+La fórmula lineal solo usa **2 variables** (LogP y TPSA) y asume una relación proporcional. Pero la BBB depende de muchos factores:
+
+| Factor | LSD | Lo que la fórmula ignora |
+|--------|-----|--------------------------|
+| **Rigidez** | Solo 2 enlaces rotables | Las moléculas rígidas cruzan mejor la BBB (menos entropía conformacional) |
+| **Tamaño** | MW 323 (pequeño) | La fórmula no pesa MW directamente |
+| **Lipofilicidad** | LogP 2.95 (ideal) | LogP está en el rango perfecto, pero el coeficiente 0.152 no le da suficiente peso |
+| **TPSA** | 49.3 Å² | El coeficiente −0.0148 penaliza demasiado. 49 Å² es bajo, pero la fórmula pesa TPSA más que LogP |
+
+> **Conclusión:** Una regresión lineal con solo 2 descriptores es demasiado simplista para un problema multidimensional. Un TPSA de 49 ya es favorable para BBB, pero el coeficiente negativo lo domina.
+
+### Solución aplicada
+
+Reemplazamos con un **sistema de 5 criterios** (también Clark, pero multicriterio):
+
+```python
+score = 0
+if MW   ≤ 400:          score += 1
+if 1 ≤ LogP ≤ 3:        score += 1
+if TPSA  ≤ 90:          score += 1
+if HBD   ≤ 3:           score += 1
+if RotBonds ≤ 8:         score += 1
+# Score ≥ 4 → penetra
+```
+
+LSD: MW=323(+1), LogP=2.95(+1), TPSA=49(+1), HBD=1(+1), RotBonds=2(+1) = **5/5 ✅**
+
+---
+
+## 🔴 Otros Puntos de Falla Encontrados
+
+### 1. [admet_filter.py](file:///e:/proyecto-ia/antidepresivos/skills/admet_filter.py) — MISMO BUG del BBB (CRÍTICO)
+
+**Archivo:** [admet_filter.py](file:///e:/proyecto-ia/antidepresivos/skills/admet_filter.py)
+
+La función [calculate_bbb_score()](file:///e:/proyecto-ia/antidepresivos/skills/admet_filter.py#59-74) (línea 59-73) usa la **misma fórmula lineal defectuosa**. Esto significa que en la **Fase 5 del pipeline real**, las moléculas están siendo filtradas con el BBB erróneo.
+
+```python
+# ANTES (DEFECTUOSO)
+return 0.152 * logp - 0.0148 * tpsa + 0.139
+```
+
+> **Impacto:** Candidatos válidos que SÍ cruzan la BBB están siendo descartados en Fase 5.
+
+### 2. [descriptor_calculator.py](file:///e:/proyecto-ia/antidepresivos/skills/descriptor_calculator.py) — NaN rellenados con 0 (MEDIO)
+
+**Archivo:** [descriptor_calculator.py](file:///e:/proyecto-ia/antidepresivos/skills/descriptor_calculator.py#L159)
+
+```python
+df = df.fillna(0)  # línea 159
+```
+
+Rellenar NaN con 0 introduce **sesgo silencioso**. Un descriptor que falló no tiene valor 0, tiene valor desconocido. Esto puede:
+- Hacer que moléculas con errores de cálculo parezcan "normales"
+- Distorsionar la normalización del `StandardScaler` (el 0 afecta media/std)
+
+> **Mejor:** Usar mediana de la columna o eliminar filas con >5 NaN.
+
+### 3. [smiles_validator.py](file:///e:/proyecto-ia/antidepresivos/skills/smiles_validator.py) — Rango de outliers fijo [3, 12] (BAJO)
+
+**Archivo:** [smiles_validator.py](file:///e:/proyecto-ia/antidepresivos/skills/smiles_validator.py#L85)
+
+```python
+df = df[(df["pActivity"] >= 3.0) & (df["pActivity"] <= 12.0)]
+```
+
+El rango [3, 12] es razonable para IC₅₀, pero:
+- Para **DAT** y **NAT**, los rangos pueden ser diferentes
+- No se usa estadística (ej: IQR × 1.5) sino valores fijos
+- Un compuesto con pActivity = 2.9 (que podría ser interesante) se pierde
+
+### 4. [descriptor_calculator.py](file:///e:/proyecto-ia/antidepresivos/skills/descriptor_calculator.py) — LogP duplicado (BAJO)
+
+Los descriptores incluyen tanto `LogP` como `MolLogP` y `CrippenLogP`, pero:
+- `LogP` (línea 66) = `Descriptors.MolLogP` = lo mismo que `MolLogP` (línea 90)
+- Son **exactamente iguales**. Esto crea multicolinealidad que XGBoost maneja, pero es ruido innecesario
+
+### 5. [fingerprint_calculator.py](file:///e:/proyecto-ia/antidepresivos/skills/fingerprint_calculator.py) — Varianza sin considerar clase (BAJO)
+
+El filtro de varianza (línea 62-75) elimina bits con varianza < 0.01 **sin considerar la variable target**. Esto puede descartar bits que tienen baja varianza global pero alta correlación con pActivity.
+
+> **Mejor:** Usar `SelectKBest` con mutual information en vez de `VarianceThreshold`.
+
+### 6. [model_trainer.py](file:///e:/proyecto-ia/antidepresivos/skills/model_trainer.py) — No hay manejo de desbalanceo (BAJO)
+
+Si el dataset tiene principalmente compuestos inactivos (pActivity < 5) y pocos activos (pActivity > 7), el modelo aprende mejor los inactivos. No se aplica:
+- Sobremuestreo
+- Peso por actividad
+- Estratificación por rango de pActivity
+
+---
+
+## Resumen de Severidad
+
+| # | Punto de Falla | Archivo | Severidad | Estado |
+|---|---------------|---------|-----------|--------|
+| 1 | BBB fórmula lineal en [panel.py](file:///e:/proyecto-ia/antidepresivos/panel.py) | panel.py | 🔴 Crítico | ✅ Corregido |
+| 2 | BBB fórmula lineal en [admet_filter.py](file:///e:/proyecto-ia/antidepresivos/skills/admet_filter.py) | admet_filter.py | 🔴 Crítico | ⏳ Pendiente |
+| 3 | NaN → 0 en descriptores | descriptor_calculator.py | 🟡 Medio | ⏳ Pendiente |
+| 4 | Rango outliers fijo | smiles_validator.py | 🔵 Bajo | Monitorear |
+| 5 | LogP duplicado | descriptor_calculator.py | 🔵 Bajo | Monitorear |
+| 6 | Varianza sin target | fingerprint_calculator.py | 🔵 Bajo | Monitorear |
+| 7 | Sin manejo de desbalanceo | model_trainer.py | 🔵 Bajo | Monitorear |

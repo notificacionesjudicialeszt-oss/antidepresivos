@@ -15,6 +15,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import config
+
 # ─── Config de página ───
 st.set_page_config(
     page_title="Panel QSAR · Antidepresivos",
@@ -299,21 +301,17 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Mini status en sidebar
-    st.markdown("##### Estado del Sistema")
+    # Mini status en sidebar — Multi-target
+    st.markdown("##### Estado por Target")
 
-    files_status = {
-        "Datos crudos": DATASETS_DIR / "dataset_sert_crudo.csv",
-        "Datos IC50": DATASETS_DIR / "dataset_ic50_limpio.csv",
-        "Features": DATASETS_DIR / "features_887.csv",
-        "Modelo IC50": MODELOS_DIR / "modelo_ic50.pkl",
-        "Modelo Optuna": MODELOS_DIR / "modelo_ic50_optuna.pkl",
-        "Candidatos": REPORTES_DIR / "candidatos_viables.csv",
-    }
+    for tkey, tinfo in config.TARGETS.items():
+        paths = config.get_target_paths(tkey)
+        has_data = check_file_status(paths["dataset_ic50"]) == "ready"
+        has_model = check_file_status(paths["modelo_ic50"]) == "ready"
+        has_cand = check_file_status(paths["candidatos_viables"]) == "ready"
 
-    for label, path in files_status.items():
-        status = check_file_status(path)
-        st.markdown(f"{status_badge(status)} {label}", unsafe_allow_html=True)
+        icon = "🟢" if has_cand else ("🟡" if has_model else ("🔵" if has_data else "⚪"))
+        st.markdown(f"{icon} **{tkey}** — {tinfo['neurotransmitter']}", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════
@@ -398,41 +396,26 @@ if page == "🏠 Inicio":
     st.markdown("")
     st.markdown("")
 
-    # ─── Stats rápidos ───
-    datos_count = count_csv_rows(DATASETS_DIR / "dataset_ic50_limpio.csv")
-    candidatos_count = count_csv_rows(REPORTES_DIR / "candidatos_viables.csv")
-    modelo_existe = (MODELOS_DIR / "modelo_ic50_optuna.pkl").exists() or (MODELOS_DIR / "modelo_ic50.pkl").exists()
+    # ─── Stats por target ───
+    st.markdown("### 🎯 Estado por Target")
+    target_cols = st.columns(3)
+    for i, (tkey, tinfo) in enumerate(config.TARGETS.items()):
+        paths = config.get_target_paths(tkey)
+        mol_count = count_csv_rows(paths["dataset_ic50"])
+        cand_count = count_csv_rows(paths["candidatos_viables"])
+        model_ok = paths["modelo_ic50"].exists() or paths["modelo_ic50_optuna"].exists()
 
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="emoji">📊</div>
-            <div class="label">Moléculas Analizadas</div>
-            <div class="value">{datos_count:,}</div>
-            <div class="desc">del Transportador de Serotonina</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_b:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="emoji">🧠</div>
-            <div class="label">Modelo IA</div>
-            <div class="value">{"Activo" if modelo_existe else "—"}</div>
-            <div class="desc">{"XGBoost entrenado y listo" if modelo_existe else "Ejecuta el pipeline primero"}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_c:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="emoji">💊</div>
-            <div class="label">Candidatos Viables</div>
-            <div class="value">{candidatos_count if candidatos_count else "—"}</div>
-            <div class="desc">{"Pasaron todos los filtros" if candidatos_count else "Ejecuta Fase 5"}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        with target_cols[i]:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="emoji">{"�" if tkey=="SERT" else ("🟠" if tkey=="NAT" else "🟢")}</div>
+                <div class="label">{tkey}</div>
+                <div class="value">{mol_count if mol_count else "—"}</div>
+                <div class="desc">{tinfo['neurotransmitter']}<br>
+                    Modelo: {"✅" if model_ok else "—"} · Candidatos: {cand_count if cand_count else "—"}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════
@@ -445,6 +428,16 @@ elif page == "🚀 Ejecutar Pipeline":
         <p>Presiona un botón para ejecutar cada fase — sin comandos, sin terminal</p>
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ─── Selector de target ───
+    selected_target = st.selectbox(
+        "🎯 Selecciona el target",
+        options=list(config.TARGETS.keys()) + ["TODOS"],
+        format_func=lambda x: f"{x} — {config.TARGETS[x]['neurotransmitter']}" if x != "TODOS" else "🌐 TODOS (SERT + NAT + DAT)",
+        help="Elige sobre cuál transportador ejecutar el pipeline",
+    )
 
     st.markdown("---")
 
@@ -511,9 +504,11 @@ elif page == "🚀 Ejecutar Pipeline":
                     use_container_width=True,
                 ):
                     with st.spinner(f"{phase['icon']} Ejecutando Fase {phase['num']}... Esto puede tardar {phase['time']}"):
+                        cmd = [sys.executable, "main.py", "--fase", str(phase["num"])]
+                        if selected_target != "TODOS":
+                            cmd.extend(["--target", selected_target])
                         result = subprocess.run(
-                            [sys.executable, "main.py", "--fase", str(phase["num"])],
-                            capture_output=True, text=True,
+                            cmd, capture_output=True, text=True,
                             cwd=str(BASE_DIR), encoding="utf-8", errors="replace",
                         )
                         if result.returncode == 0:
@@ -538,9 +533,11 @@ elif page == "🚀 Ejecutar Pipeline":
 
     if st.button("🚀 EJECUTAR PIPELINE COMPLETO", use_container_width=True):
         with st.spinner("⏳ Ejecutando pipeline completo... Esto puede tardar 20-40 minutos"):
+            cmd = [sys.executable, "main.py"]
+            if selected_target != "TODOS":
+                cmd.extend(["--target", selected_target])
             result = subprocess.run(
-                [sys.executable, "main.py"],
-                capture_output=True, text=True,
+                cmd, capture_output=True, text=True,
                 cwd=str(BASE_DIR), encoding="utf-8", errors="replace",
             )
             if result.returncode == 0:
@@ -618,8 +615,14 @@ elif page == "🔬 Analizar Molécula":
         rings = Descriptors.RingCount(mol)
         formula = rdMolDescriptors.CalcMolFormula(mol)
 
-        # BBB score Clark
-        bbb_score = 0.152 * logp - 0.0148 * tpsa + 0.139
+        # BBB score — Sistema de 5 criterios (Clark 2003)
+        bbb_score = 0
+        if mw <= 400: bbb_score += 1
+        if 1 <= logp <= 3: bbb_score += 1
+        if tpsa <= 90: bbb_score += 1
+        if hbd <= 3: bbb_score += 1
+        if rot <= 8: bbb_score += 1
+        bbb_penetra = bbb_score >= 4
 
         # Lipinski
         lip_violations = sum([mw > 500, logp > 5, hbd > 5, hba > 10])
@@ -646,7 +649,7 @@ elif page == "🔬 Analizar Molécula":
         score_max = 5
         if qed >= 0.5: score += 1
         if lip_violations <= 1: score += 1
-        if bbb_score > 0: score += 1
+        if bbb_penetra: score += 1
         if pains_free: score += 1
         if 3 <= mw / 100 <= 5: score += 1
 
@@ -716,13 +719,13 @@ elif page == "🔬 Analizar Molécula":
             """, unsafe_allow_html=True)
 
         with p3:
-            bbb_status = "✅" if bbb_score > 0 else "❌"
+            bbb_status = "✅" if bbb_penetra else "❌"
             st.markdown(f"""
             <div class="metric-card">
                 <div class="emoji">🧠</div>
                 <div class="label">Penetra el Cerebro (BBB)</div>
-                <div class="value">{bbb_score:.2f}</div>
-                <div class="desc">{bbb_status} {"Sí penetra" if bbb_score > 0 else "No penetra"} (mínimo: 0.00)</div>
+                <div class="value">{bbb_score}/5</div>
+                <div class="desc">{bbb_status} {"Sí penetra" if bbb_penetra else "Baja penetración"} (mínimo: 4/5)</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -771,6 +774,15 @@ elif page == "📊 Ver Resultados":
 
     st.markdown("---")
 
+    # Selector de target para resultados
+    res_target = st.selectbox(
+        "🎯 Ver resultados de",
+        options=list(config.TARGETS.keys()),
+        format_func=lambda x: f"{x} — {config.TARGETS[x]['neurotransmitter']}",
+        key="results_target",
+    )
+    res_paths = config.get_target_paths(res_target)
+
     tab_datos, tab_candidatos, tab_reportes = st.tabs([
         "📥 Datos Descargados",
         "💊 Candidatos Viables",
@@ -778,9 +790,9 @@ elif page == "📊 Ver Resultados":
     ])
 
     with tab_datos:
-        if (DATASETS_DIR / "dataset_ic50_limpio.csv").exists():
-            df = pd.read_csv(DATASETS_DIR / "dataset_ic50_limpio.csv")
-            st.markdown(f"**{len(df):,} moléculas** en el dataset IC₅₀ curado")
+        if res_paths["dataset_ic50"].exists():
+            df = pd.read_csv(res_paths["dataset_ic50"])
+            st.markdown(f"**{len(df):,} moléculas** en el dataset IC₅₀ curado de **{res_target}**")
 
             col_s1, col_s2, col_s3 = st.columns(3)
             col_s1.metric("Total Moléculas", f"{len(df):,}")
@@ -792,33 +804,35 @@ elif page == "📊 Ver Resultados":
             st.dataframe(df.head(50), use_container_width=True, hide_index=True)
 
             st.download_button(
-                "📥 Descargar dataset completo (CSV)",
+                f"📥 Descargar dataset {res_target} (CSV)",
                 data=df.to_csv(index=False),
-                file_name="dataset_ic50_limpio.csv",
+                file_name=f"dataset_{res_target.lower()}_ic50.csv",
                 mime="text/csv",
             )
         else:
-            st.info("📭 Aún no hay datos. Ejecuta la **Fase 1** primero.")
+            st.info(f"📭 No hay datos de {res_target}. Ejecuta la **Fase 1** para este target.")
 
     with tab_candidatos:
-        candidatos_path = REPORTES_DIR / "candidatos_viables.csv"
+        candidatos_path = res_paths["candidatos_viables"]
         if candidatos_path.exists():
             df_cand = pd.read_csv(candidatos_path)
-            st.markdown(f"**{len(df_cand):,} candidatos** pasaron todos los filtros ADMET")
+            st.markdown(f"**{len(df_cand):,} candidatos** de **{res_target}** pasaron todos los filtros ADMET")
 
             st.dataframe(df_cand, use_container_width=True, hide_index=True)
 
             st.download_button(
-                "📥 Descargar candidatos viables (CSV)",
+                f"📥 Descargar candidatos {res_target} (CSV)",
                 data=df_cand.to_csv(index=False),
-                file_name="candidatos_viables.csv",
+                file_name=f"candidatos_viables_{res_target.lower()}.csv",
                 mime="text/csv",
             )
         else:
-            st.info("📭 Aún no hay candidatos. Ejecuta la **Fase 5** primero.")
+            st.info(f"📭 No hay candidatos de {res_target}. Ejecuta la **Fase 5** para este target.")
 
     with tab_reportes:
-        reportes = list(REPORTES_DIR.glob("*.md")) if REPORTES_DIR.exists() else []
+        # Filtrar reportes por target
+        target_lower = res_target.lower()
+        reportes = [r for r in REPORTES_DIR.glob(f"*{target_lower}*.md")] if REPORTES_DIR.exists() else []
         if reportes:
             for reporte in sorted(reportes):
                 with st.expander(f"📄 {reporte.stem}"):

@@ -86,8 +86,7 @@ def calculate_43_descriptors(smiles: str) -> Optional[dict]:
         "GasteigerMean": gasteiger_mean,
         "BertzCT": _safe_calc(Descriptors.BertzCT, mol),
 
-        # ── Lipofilicidad ──
-        "MolLogP": _safe_calc(Descriptors.MolLogP, mol),
+        # ── Lipofilicidad (CrippenLogP usa algoritmo distinto a MolLogP/Wildman-Crippen) ──
         "CrippenLogP": _safe_calc(lambda m: rdMolDescriptors.CalcCrippenDescriptors(m)[0], mol),
         "CrippenMR": _safe_calc(lambda m: rdMolDescriptors.CalcCrippenDescriptors(m)[1], mol),
 
@@ -155,8 +154,11 @@ def calculate_descriptors_batch(
 
     df = pd.DataFrame(results)
 
-    # Rellenar NaN con 0 para moléculas que fallaron
-    df = df.fillna(0)
+    # Rellenar NaN con la mediana de cada columna (evita sesgo de usar 0)
+    for col in df.columns:
+        if df[col].isna().any():
+            median_val = df[col].median()
+            df[col] = df[col].fillna(median_val if not np.isnan(median_val) else 0)
 
     logger.info(
         f"📊 Descriptores calculados: {len(df)} moléculas × {len(df.columns)} descriptores "
