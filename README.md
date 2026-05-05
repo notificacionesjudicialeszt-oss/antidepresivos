@@ -21,7 +21,7 @@
 
 ## 🔬 Descripción
 
-Este proyecto implementa un pipeline **QSAR (Quantitative Structure-Activity Relationship)** para predecir la actividad biológica de compuestos candidatos a antidepresivos contra el transportador de serotonina (SERT, CHEMBL228).
+Este proyecto implementa un pipeline **QSAR (Quantitative Structure-Activity Relationship)** para predecir la actividad biológica de compuestos candidatos a antidepresivos contra el transportador de serotonina (STER, CHEMBL228).
 
 El sistema está construido como una arquitectura **multi-agente con skills reutilizables**:
 
